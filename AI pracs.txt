@@ -1,0 +1,311 @@
+Code: bfs 
+% --- Facts: Graph edges ---
+edge(a, b).
+edge(a, c).
+edge(b, d).
+edge(b, e).
+edge(c, f).
+edge(c, g).
+% --- BFS driver ---
+bfs(Start, Goal, Path) :-
+ bfs_search([[Start]], Goal, RevPath),
+ reverse(RevPath, Path).
+% --- BFS search loop ---
+bfs_search([[Goal|RestPath] | _], Goal, [Goal|RestPath]). % Goal found
+bfs_search([[Node|RestPath] | OtherPaths], Goal, Path) :-
+ findall([Next,Node|RestPath],
+ (edge(Node, Next), \+ member(Next, [Node|RestPath])),
+ NewPaths),
+ append(OtherPaths, NewPaths, UpdatedQueue),
+ bfs_search(UpdatedQueue, Goal, Path).
+Output:
+bfs(a,g,Path).
+Path = [a, c, g]
+ 
+
+----------------------------------------------------
+
+Code: 8 queen
+% best_first_8puzzle.pl
+% Greedy Best-First Search for 8-puzzle
+% State representation: list of 9 numbers, 0 = blank.
+% Example goal: [1,2,3,4,5,6,7,8,0]
+%% Public entry
+solve_best_first(Start, Goal, Path) :-
+ h_misplaced(Start, Goal, H0),
+ best_first([H0-(Start-[Start])], Goal, [], Path). % open: list of H-(State-PathRev)
+%% Main loop
+best_first([], _, _, _) :- % no solution
+ fail.
+best_first([_H-(State-PathRev)|_], Goal, _, Path) :-
+ State == Goal, % goal test
+ reverse(PathRev, Path), !. % return path (start..goal)
+best_first([_H-(State-PathRev)|RestOpen], Goal, Closed, Path) :-
+ findall(Hn-(Next-NewPathRev),
+ ( move(State, Next),
+ \+ member(Next, PathRev), % avoid cycles by path check
+ \+ member(Next, Closed), % optional: avoid states already closed
+ h_misplaced(Next, Goal, Hn),
+ NewPathRev = [Next|PathRev]
+ ),
+ Children),
+ append(RestOpen, Children, Open2),
+ keysort(Open2, SortedOpen), % sort by heuristic (smallest H first)
+ best_first(SortedOpen, Goal, [State|Closed], Path).
+%% Moves: swap blank (0) with an adjacent tile (using indices 1..9).
+move(State, NextState) :-
+ nth1(BlankPos, State, 0),
+ adj(BlankPos, SwapPos),
+ swap(State, BlankPos, SwapPos, NextState).
+%% adjacency in 3x3 grid (symmetric)
+adj(1,2). adj(1,4).
+adj(2,1). adj(2,3). adj(2,5).
+adj(3,2). adj(3,6).
+adj(4,1). adj(4,5). adj(4,7).
+adj(5,2). adj(5,4). adj(5,6). adj(5,8).
+adj(6,3). adj(6,5). adj(6,9).
+adj(7,4). adj(7,8).
+adj(8,5). adj(8,7). adj(8,9).
+adj(9,6). adj(9,8).
+%% swap elements at positions I and J (1-based)
+swap(State, I, J, NewState) :-
+ nth1(I, State, EI),
+ nth1(J, State, EJ),
+ replace(State, I, EJ, Temp),
+ replace(Temp, J, EI, NewState).
+replace([_|T], 1, X, [X|T]).
+replace([H|T], I, X, [H|R]) :-
+ I > 1, I1 is I - 1,
+ replace(T, I1, X, R).
+%% Heuristic: number of misplaced tiles (excluding blank)
+h_misplaced(State, Goal, H) :-
+ h_misplaced_acc(State, Goal, 0, H).
+h_misplaced_acc([], [], Acc, Acc).
+h_misplaced_acc([0|Ts], [_|Gs], Acc, H) :- % ignore blank
+ !, h_misplaced_acc(Ts, Gs, Acc, H).
+h_misplaced_acc([X|Ts], [Y|Gs], Acc, H) :-
+ X == Y, !,
+ h_misplaced_acc(Ts, Gs, Acc, H).
+h_misplaced_acc([_|Ts], [_|Gs], Acc, H) :-
+ Acc1 is Acc + 1,
+ h_misplaced_acc(Ts, Gs, Acc1, H).
+Output:
+solve_best_first([1,2,3,4,5,6,7,0,8],[1,2,3,4,5,6,7,8,0],Path).
+Path = [[1, 2, 3, 4, 5, 6, 7, 0|...], [1, 2, 3, 4, 5, 6, 7|...]].
+
+------------------------------------------------
+
+Code: tsp
+
+% ----- Facts -----
+% distance(City1, City2, Distance).
+distance(a, b, 10).
+distance(a, c, 15).
+distance(a, d, 20).
+distance(b, c, 35).
+distance(b, d, 25).
+distance(c, d, 30).
+% distance is symmetric
+dist(X, Y, D) :- distance(X, Y, D).
+dist(X, Y, D) :- distance(Y, X, D).
+% ----- Generate tour -----
+% find all permutations of cities (except start), calculate cost
+tsp(Start, Path, Cost) :-
+ findall(C, (distance(Start, C, _)), Cities1),
+ sort(Cities1, Cities), % get unique cities
+ permutation(Cities, Perm),
+ append([Start|Perm], [Start], Path), % full cycle
+ path_cost(Path, Cost).
+% ----- Calculate path cost -----
+path_cost([_], 0).
+path_cost([A,B|T], Cost) :-
+ dist(A, B, D),
+ path_cost([B|T], Rest),
+ Cost is D + Rest.
+% ----- Find best path -----
+tsp_best(Start, BestPath, MinCost) :-
+ setof((C, P), tsp(Start, P, C), [(MinCost, BestPath)|_]).
+Output:
+tsp_best(a,Path,Cost).
+Path = [a, b, d, c, a],
+
+-----------------------------------------
+code : tic tak toe
+% A board is a list of 9 elements. x, o, or ' '.
+% Main entry point: finds the computer's (x) best move.
+best_move(Board, Move) :-
+ findall(Score-M, (move(x, Board, M, NewBoard), minimax(NewBoard, o,
+Score)), Pairs),
+ keysort(Pairs, SortedPairs),
+ reverse(SortedPairs, [_-Move|_]).
+% A player makes a move.
+move(Player, Board, Pos, NewBoard) :-
+ nth1(Pos, Board, ' '),
+ replace(Pos, Board, Player, NewBoard).
+% Minimax for the minimizing player (o).
+minimax(Board, o, Score) :-
+ win(Board, x), Score is 1, !.
+minimax(Board, o, Score) :-
+ win(Board, o), Score is -1, !.
+minimax(Board, o, Score) :-
+ draw(Board), Score is 0, !.
+minimax(Board, o, Score) :-
+ findall(S, (move(o, Board, _, NewBoard), maxi(NewBoard, x, S)), Scores),
+ min_list(Scores, Score).
+% Minimax for the maximizing player (x).
+maxi(Board, x, Score) :-
+ win(Board, x), Score is 1, !.
+maxi(Board, x, Score) :-
+ win(Board, o), Score is -1, !.
+maxi(Board, x, Score) :-
+ draw(Board), Score is 0, !.
+maxi(Board, x, Score) :-
+ findall(S, (move(x, Board, _, NewBoard), minimax(NewBoard, o, S)), Scores),
+ max_list(Scores, Score).
+% Win conditions.
+win(B, P) :- row_win(B, P).
+win(B, P) :- col_win(B, P).
+win(B, P) :- diag_win(B, P).
+row_win([P, P, P, _, _, _, _, _, _], P).
+row_win([_, _, _, P, P, P, _, _, _], P).
+row_win([_, _, _, _, _, _, P, P, P], P).
+col_win([P, _, _, P, _, _, P, _, _], P).
+col_win([_, P, _, _, P, _, _, P, _], P).
+col_win([_, _, P, _, _, P, _, _, P], P).
+diag_win([P, _, _, _, P, _, _, _, P], P).
+diag_win([_, _, P, _, P, _, P, _, _], P).
+% Check for a draw.
+draw(Board) :-
+ \+ win(Board, x),
+ \+ win(Board, o),
+ \+ member(' ', Board).
+% Helper predicate to replace an element in a list.
+replace(I, L, E, K) :-
+ nth1(I, L, _, R),
+ nth1(I, K, E, R).
+% Helper predicate to print the board.
+print_board([A,B,C,D,E,F,G,H,I]) :-
+ format('~n ~w | ~w | ~w ~n', [A,B,C]),
+ format('-----------~n'),
+ format(' ~w | ~w | ~w ~n', [D,E,F]),
+ format('-----------~n'),
+ format(' ~w | ~w | ~w ~n', [G,H,I]), nl.
+Output :
+?- Board = ['x','o','x','o','x',' ',' ','o',' ']
+----------------------------------------------------------
+
+% --- Alpha-Beta Pruning (minimal version) ---
+
+alpha_beta(Pos, _, _, _, Val) :-
+    terminal(Pos), value(Pos, Val), !.
+
+alpha_beta(Pos, A, B, max, Val) :-
+    findall(M, move(Pos, M), Ms),
+    best(Ms, Pos, A, B, max, -inf, Val).
+
+alpha_beta(Pos, A, B, min, Val) :-
+    findall(M, move(Pos, M), Ms),
+    best(Ms, Pos, A, B, min, inf, Val).
+
+best([], _, _, _, _, V, V).
+best([M|Ms], Pos, A, B, max, Cur, Val) :-
+    apply(Pos, M, P1),
+    alpha_beta(P1, A, B, min, V),
+    A1 is max(A, V),
+    ( A1 >= B -> Val = A1
+    ; max(Cur, V, C1),
+      best(Ms, Pos, A1, B, max, C1, Val)
+    ).
+
+best([M|Ms], Pos, A, B, min, Cur, Val) :-
+    apply(Pos, M, P1),
+    alpha_beta(P1, A, B, max, V),
+    B1 is min(B, V),
+    ( A >= B1 -> Val = B1
+    ; min(Cur, V, C1),
+      best(Ms, Pos, A, B1, min, C1, Val)
+    ).
+
+% --- Example game tree ---
+terminal(a). terminal(b). terminal(c). terminal(d).
+
+move(root, a). move(root, b).
+move(a, c). move(a, d).
+
+apply(_, M, M).
+
+value(a, 3). value(b, 12).
+value(c, 8). value(d, 2).
+
+max(A,B,B) :- B >= A, !. max(A,_,A).
+min(A,B,B) :- B =< A, !. min(A,_,A).
+Output :
+?- alpha_beta(root, -inf, inf, max, Value).
+Value = 12
+-----------------------------------------
+
+:- use_module(library(lists)).
+
+% Main predicate – just the solving logic
+solve_and_show :-
+    queens(Board),
+    write('Solution: '), write(Board), nl.
+
+% queens(Qs) – Qs is a list of 8 integers; each represents the row
+% position of the queen in that column.
+queens(Qs) :-
+    permutation([1,2,3,4,5,6,7,8], Qs),
+    safe(Qs).
+
+% safe(List) – no two queens attack each other
+safe([]).
+safe([Q|Qs]) :-
+    no_attack(Q, Qs, 1),
+    safe(Qs).
+
+% no_attack(Q, Rest, D) – Q doesn’t attack any queen in Rest.
+% D is the column distance between Q and the queens in Rest.
+no_attack(_, [], _).
+no_attack(Q, [Q1|Qs], D) :-
+    Q =\= Q1,            % different rows
+    abs(Q - Q1) =\= D,   % not on same diagonal
+    D1 is D + 1,
+    no_attack(Q, Qs, D1).
+run : queens(Qs).
+----------------------------------------------------
+Code : map csp
+:- use_module(library(clpfd)).
+% Define the map coloring problem for Australia using three colors.
+solve_australia_coloring(Coloring) :-
+ % 1. Define the variables: one for each state/territory.
+ % The variable names are uppercase, which is standard for Prolog.
+ Coloring = [WA, NT, SA, QLD, NSW, VIC],
+ % 2. Define the domain for each variable (the available colors).
+ % We use integer values to represent the colors: 1=red, 2=green, 3=blue.
+ Coloring ins 1..3,
+ % 3. Define the constraints: adjacent states must have different colors.
+ WA #\= NT, % Western Australia must have a different color than Northern
+Territory.
+ WA #\= SA, % Western Australia must have a different color than South
+Australia.
+ NT #\= SA,
+ NT #\= QLD,
+ SA #\= QLD,
+ SA #\= NSW,
+ SA #\= VIC,
+ QLD #\= NSW,
+ NSW #\= VIC,
+ % 4. Find the first solution by labeling the variables.
+ % The `labeling` predicate triggers the search for a solution.
+ labeling([], Coloring).
+% A helper predicate to display the solution in a more readable format.
+display_coloring([WA, NT, SA, QLD, NSW, VIC]) :-
+ format('Western Australia: ~w~n', [WA]),
+ format('Northern Territory: ~w~n', [NT]),
+ format('South Australia: ~w~n', [SA]),
+ format('Queensland: ~w~n', [QLD]),
+ format('New South Wales: ~w~n', [NSW]),
+ format('Victoria: ~w~n', [VIC]).
+Output :
+?- solve_australia_coloring(Coloring).
+?- solve_australia_coloring(Coloring),display_coloring(Coloring).
